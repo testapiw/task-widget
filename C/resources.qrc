@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource>
+    <file>src/icon/vscode.png</file>
+    <file>src/icon/alarm_red.png</file>
+</qresource>
+</RCC>
