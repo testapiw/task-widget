@@ -74,6 +74,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     if (settings.contains("pos")) move(settings.value("pos").toPoint());
 
     refreshList();
+
+    QTimer *serverCheckTimer = new QTimer(this);
+    connect(serverCheckTimer, &QTimer::timeout, this, &MainWindow::checkServerActualStatus);
+    serverCheckTimer->start(15000); 
 }
 
 MainWindow::~MainWindow() = default;
@@ -111,6 +115,28 @@ void MainWindow::setupUi() {
         else setFixedHeight(650);
     });
 
+    m_serverControlWidget = new QWidget();
+    auto *srvLayout = new QHBoxLayout(m_serverControlWidget);
+    srvLayout->setContentsMargins(0,0,0,0);
+    srvLayout->setSpacing(5);
+
+    m_serverStatusLed = new QLabel();
+    m_serverStatusLed->setFixedSize(10, 10);
+    m_serverStatusLed->setStyleSheet("background-color: #555; border-radius: 5px;");
+
+    m_btnServer = new QPushButton("SRV");
+    m_btnServer->setFixedSize(34, 24);
+    m_btnServer->setStyleSheet("QPushButton { border: 1px solid #444; background: #2d2d2d; color: #888; font-size: 10px; border-radius: 3px; }");
+
+    header->addWidget(m_serverControlWidget); 
+
+
+    QSettings settings("TaskWidget", "TaskWidget");
+    m_serverControlWidget->setVisible(!settings.value("serverPath").toString().isEmpty());
+
+    connect(m_btnServer, &QPushButton::clicked, this, &MainWindow::toggleServer);
+
+
     // Settings button: Opens the plugin and global configuration
     auto *btnSettings = new QPushButton("⚙");
     btnSettings->setFixedSize(24, 24);
@@ -125,6 +151,10 @@ void MainWindow::setupUi() {
     header->addWidget(dragHandle);
     // header->addWidget(btnPin);
     header->addWidget(btnResize);
+
+    header->addWidget(m_serverStatusLed);
+    header->addWidget(m_btnServer);
+
     header->addWidget(btnSettings);
     header->addWidget(btnNew, 1); // stretch factor of 1 allows button to fill space
     layout->addLayout(header);
@@ -140,6 +170,64 @@ void MainWindow::setupUi() {
 
     // Apply initial QSS style (non-alarm state)
     updateVisualState(false);
+}
+
+void MainWindow::toggleServer() {
+    QSettings settings("TaskWidget", "TaskWidget");
+    QString serverPath = settings.value("serverPath").toString();
+
+    if (serverPath.isEmpty()) {
+        QProcess::startDetached("notify-send", {"-u", "normal", "Error", "Server path is not set in settings!"});
+        return;
+    }
+
+    QString command = m_isServerRunning ? "stop" : "start";
+    
+    // QProcess *process = new QProcess(this);
+    // process->startDetached(serverPath, {command});
+
+    // pkexec will invoke the system password dialog
+    // We execute this via 'bash -c' to ensure the path is handled correctly
+    QStringList args;
+    args << "-c" << QString("pkexec %1 %2").arg(serverPath).arg(command);
+
+    if (QProcess::startDetached("bash", args)) {
+        m_serverStatusLed->setStyleSheet("background-color: yellow; border-radius: 5px;");
+        m_btnServer->setText("...");
+        m_isServerRunning = !m_isServerRunning;
+    }
+}
+
+void MainWindow::checkServerActualStatus() {
+    if (!m_isServerRunning) {
+        m_serverStatusLed->setStyleSheet("background-color: #aa0000; border: 1px solid #440000; border-radius: 5px;");
+        m_btnServer->setText("SRV");
+        return;
+    }
+
+    QStringList services = {"mysql", "nginx"}; // , "php8.5-fpm"
+    bool allOk = true;
+
+    for (const QString &svc : services) {
+        QProcess check;
+        // is-active returns 0 (success) if active, and non-zero otherwise
+        check.start("systemctl", {"is-active", "--quiet", svc});
+        check.waitForFinished();
+        
+        if (check.exitCode() != 0) {
+            allOk = false;
+            break;
+        }
+    }
+
+    if (allOk) {
+        m_serverStatusLed->setStyleSheet("background-color: #00ff00; border: 1px solid #004400; border-radius: 5px;");
+        m_btnServer->setText("OFF");
+    } else {
+        // At least one service is not running
+        m_serverStatusLed->setStyleSheet("background-color: orange; border-radius: 5px;");
+        m_btnServer->setText("wait");
+    }
 }
 
 /**
@@ -569,6 +657,22 @@ void MainWindow::showSettingsDialog() {
     });
     
     mainLayout->addWidget(onTopCheck);
+
+
+    // --- SERVER SETTINGS ---
+    QLabel *serverLabel = new QLabel("Server script path:");
+    QLineEdit *serverPathEdit = new QLineEdit(globalSettings.value("serverPath", "").toString());
+    serverPathEdit->setPlaceholderText("/path/to/your/server_script");
+
+    connect(serverPathEdit, &QLineEdit::textChanged, [this](const QString &text) {
+        QSettings settings("TaskWidget", "TaskWidget");
+        settings.setValue("serverPath", text);
+        m_serverControlWidget->setVisible(!text.isEmpty());
+    });
+
+    mainLayout->addWidget(serverLabel);
+    mainLayout->addWidget(serverPathEdit);
+
 
     // Visual Separator
     auto *line = new QFrame();

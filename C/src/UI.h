@@ -6,7 +6,10 @@
 #include <QUuid>
 #include <QMouseEvent>
 #include <QTimer>
+#include <QWidget>
 #include <QCheckBox>
+#include <QLabel>
+#include <QPushButton>
 #include "Task.h"
 #include "AlarmManager.h"
 #include "PluginManager.h"
@@ -68,6 +71,9 @@ private:
     /** @brief Displays a system-level notification via the tray icon. */
     void sendNotification(const QString &title, const QString &message);
 
+    void toggleServer();
+    void checkServerActualStatus();
+
 
     // Core Logic Modules
     std::vector<Task> m_tasks;      // In-memory collection of all tasks
@@ -81,4 +87,9 @@ private:
     // Window dragging state variables
     bool m_dragging = false;
     QPoint m_dragPosition;
+
+    QWidget *m_serverControlWidget;
+    QPushButton *m_btnServer;
+    QLabel *m_serverStatusLed;
+    bool m_isServerRunning = false;
 };
